@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Delta Fitness Shipment Tracker - Control Tower</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- SheetJS: browser-side Excel parser -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js for visuals -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- =================== HEADER (NAV / ERP style) =================== -->
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <!-- LEFT: Delta Fitness logo, far left -->
+      <div class="brand">
+        <div class="brand-logo-wrap" aria-hidden="true">
+          <img src="assets/delta-logo.png" alt="Delta Fitness" class="brand-logo"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="brand-logo-fallback">DF</div>
+        </div>
+      </div>
+
+      <!-- CENTER: title + tagline -->
+      <div class="brand-center">
+        <h1 class="brand-title">DELTA FITNESS SHIPMENT TRACKER</h1>
+        <p class="brand-tagline">
+          <span>Shipment Control Tower</span>
+          <span class="sep">|</span>
+          <span>Vendor Tracking</span>
+          <span class="sep">|</span>
+          <span>PO &amp; Item Visibility</span>
+          <span class="sep">|</span>
+          <span>Planning Ready</span>
+        </p>
+      </div>
+
+      <!-- RIGHT: Powered by + photo, far right -->
+      <div class="powered">
+        <div class="powered-text">
+          <div class="powered-line-1">POWERED BY</div>
+          <div class="powered-line-2">Mahmoud AlforGany</div>
+          <div class="powered-line-3">DF SC Planning</div>
+        </div>
+        <div class="powered-photo-wrap" aria-hidden="true">
+          <img src="assets/mahmoud-photo.png" alt="" class="powered-photo"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="powered-photo-fallback">MA</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status pills strip + system message -->
+    <div class="header-strip">
+      <div class="status-pills" id="statusPills">
+        <span class="status-pill" data-pill="data">
+          <span class="dot"></span><span class="pill-label">Shipment Data</span><span class="pill-state">- awaiting</span>
+        </span>
+        <span class="status-pill" data-pill="engine">
+          <span class="dot"></span><span class="pill-label">Engine</span><span class="pill-state">- idle</span>
+        </span>
+        <span class="status-pill" data-pill="tower">
+          <span class="dot"></span><span class="pill-label">Control Tower</span><span class="pill-state">- standby</span>
+        </span>
+        <span class="status-pill" data-pill="storage">
+          <span class="dot"></span><span class="pill-label">Storage</span><span class="pill-state">- empty</span>
+        </span>
+      </div>
+
+      <div class="system-message" id="systemMessage" role="status" aria-live="polite">
+        <span class="msg-icon">i</span>
+        <span class="msg-text">No data loaded yet - waiting for the shipment file.</span>
+      </div>
+    </div>
+
+    <!-- Toolbar (admin actions only) -->
+    <div class="header-toolbar">
+      <div class="toolbar-meta">
+        <div class="meta-item" title="Source file">
+          <span class="meta-key">FILE</span>
+          <span id="fileName" class="meta-val">- no file loaded -</span>
+        </div>
+        <div class="meta-item" title="Last refresh">
+          <span class="meta-key">LOADED</span>
+          <span id="loadedAt" class="meta-val">-</span>
+        </div>
+        <div class="meta-item" title="Lines parsed">
+          <span class="meta-key">ROWS</span>
+          <span id="rowCount" class="meta-val">0</span>
+        </div>
+        <div class="meta-item" title="Distinct shipments">
+          <span class="meta-key">SHIPMENTS</span>
+          <span id="shipmentCount" class="meta-val">0</span>
+        </div>
+      </div>
+
+      <div class="toolbar-actions">
+        <button class="btn primary" id="btnUpdateFile" title="Replace the shipment file (admin password required)">Update Shipment File</button>
+        <button class="btn ghost" id="btnLoadDemo" title="Load embedded sample data (no password)">Demo Data</button>
+        <button class="btn ghost" id="btnExport" title="Export the currently filtered table to CSV">Export View</button>
+        <button class="btn ghost" id="btnPrint" title="Open print-ready executive report">Print</button>
+        <button class="btn ghost danger" id="btnClearStorage" title="Clear stored Excel data from this browser (admin password required)">Clear Stored Data</button>
+        <button class="btn ghost icon" id="themeToggle" title="Toggle dark / light" aria-label="Toggle theme">D</button>
+      </div>
+    </div>
+
+    <!-- Hidden file input - triggered only after password OK -->
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden />
+  </header>
+
+  <!-- =================== HERO SEARCH (operational entry point) =================== -->
+  <section class="hero-search" id="heroSearch">
+    <div class="hero-inner">
+      <div class="hero-eyebrow">SHIPMENT TRACKING SEARCH</div>
+      <div class="hero-search-row">
+        <span class="hero-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        </span>
+        <input type="search" id="heroSearchInput"
+               placeholder="Type Item Code, Description, Vendor, PO No., SO/PI, or Shipment ID..."
+               autocomplete="off" spellcheck="false" />
+        <button class="btn ghost small" id="heroSearchClear" title="Clear search" hidden>Clear</button>
+      </div>
+      <div class="hero-suggestions" id="heroSuggestions" hidden></div>
+      <div class="hero-summary" id="heroSummary">
+        Type to filter the shipment table instantly. Search covers Item Code, Description, Vendor, PO, SO/PI, and Shipment ID.
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== EMPTY STATE =================== -->
+  <section class="empty-state glass" id="emptyState">
+    <div class="empty-content">
+      <div class="empty-icon-wrap" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="42" height="42"><path fill="currentColor" d="M3 13h2v6h14v-6h2l-1.79-7.16A2 2 0 0 0 17.27 4H6.73a2 2 0 0 0-1.94 1.84L3 13zm2.7-7h12.6l1.4 6H4.3l1.4-6zM12 8h2v3h-2zM8 8h2v3H8z"/></svg>
+      </div>
+      <h2>Shipment data not loaded yet</h2>
+      <p>This Control Tower auto-restores the last uploaded file from this browser. If nothing is saved, an admin needs to click <strong>Update Shipment File</strong> in the header to upload the latest tracker.</p>
+      <ul class="checklist">
+        <li>Reads <code>Shipment Model</code>, <code>Shipment Engine</code>, or raw <code>LOG Raw Data</code></li>
+        <li>Auto-detects column names (Item, PO, Vendor, ETA, ...)</li>
+        <li>Recomputes Smart Status, Risk, Delay and Next Action client-side</li>
+        <li>Persists in your browser - refreshes do not lose the data</li>
+      </ul>
+      <div class="empty-actions">
+        <button class="btn primary" id="emptyUpdateBtn">Update Shipment File</button>
+        <button class="btn ghost" id="emptyDemoBtn">Try Demo Data</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== MAIN TRACKING TABLE (operational - shown first) =================== -->
+  <section class="section-wrap glass" id="tableSection" hidden>
+    <h3 class="section-title">Shipment Tracking Table</h3>
+    <div class="table-toolbar">
+      <span class="muted" id="tableCount">-</span>
+      <div class="pager">
+        <button class="btn ghost small" id="pgFirst" title="First page">First</button>
+        <button class="btn ghost small" id="pgPrev" title="Previous page">Prev</button>
+        <span id="pgInfo">page 1 / 1</span>
+        <button class="btn ghost small" id="pgNext" title="Next page">Next</button>
+        <button class="btn ghost small" id="pgLast" title="Last page">Last</button>
+        <select id="pgSize" title="Rows per page">
+          <option>25</option><option selected>50</option><option>100</option><option>250</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table sticky" id="mainTable">
+        <thead>
+          <tr>
+            <th data-sort="shipmentId">Shipment ID</th>
+            <th data-sort="po">PO No.</th>
+            <th data-sort="soPi">SO/PI</th>
+            <th data-sort="vendor">Vendor</th>
+            <th data-sort="itemCode">Item Code</th>
+            <th data-sort="description">Description</th>
+            <th data-sort="qty" class="num">Qty</th>
+            <th data-sort="orderDate">Order</th>
+            <th data-sort="shipDate">Ship</th>
+            <th data-sort="eta">ETA</th>
+            <th data-sort="arrival">Arrival</th>
+            <th data-sort="status">Raw Status</th>
+            <th data-sort="smartStatus">Smart Status</th>
+            <th data-sort="delayDays" class="num">Delay (d)</th>
+            <th data-sort="riskLevel">Risk</th>
+            <th data-sort="priority" class="num">Priority</th>
+            <th data-sort="nextAction">Next Action</th>
+          </tr>
+        </thead>
+        <tbody id="mainTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- =================== KPI GRID (8 cards) =================== -->
+  <section class="section-wrap" id="kpiSection" hidden>
+    <h3 class="section-title">Key Performance Indicators</h3>
+    <div class="kpi-grid kpi-grid-compact" id="kpiGrid"></div>
+  </section>
+
+  <!-- =================== FILTERS (secondary, COLLAPSED by default) =================== -->
+  <section class="section-wrap glass filters-wrap is-collapsed" id="filtersSection" hidden>
+    <h3 class="section-title">
+      <span class="title-text">Filters</span>
+      <button class="btn primary small filters-toggle-btn" id="filtersToggle" title="Show / hide filters" aria-expanded="false">
+        <span class="toggle-chevron">v</span>
+        <span class="toggle-label">Show Filters</span>
+      </button>
+    </h3>
+    <div class="filters-grid" id="filtersGrid">
+      <div class="filter-cell wide">
+        <label>Global search (advanced)</label>
+        <div class="smart-search advanced-search">
+          <span class="smart-search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          </span>
+          <input type="search" id="filterSearch" placeholder="Item code, description, PO, vendor, SO/PI, Shipment ID..." autocomplete="off" />
+          <button type="button" class="btn ghost small smart-search-clear" id="filterSearchClear" hidden>Clear</button>
+        </div>
+        <div class="smart-suggestions" id="filterSearchSuggestions" hidden></div>
+      </div>
+      <div class="filter-cell">
+        <label>Vendor</label>
+        <select id="filterVendor"><option value="">All</option></select>
+      </div>
+      <div class="filter-cell">
+        <label>Smart Status</label>
+        <select id="filterStatus"><option value="">All</option></select>
+      </div>
+      <div class="filter-cell">
+        <label>Risk Level</label>
+        <select id="filterRisk"><option value="">All</option></select>
+      </div>
+      <div class="filter-cell">
+        <label>Purpose</label>
+        <select id="filterPurpose"><option value="">All</option></select>
+      </div>
+      <div class="filter-cell">
+        <label>PO No.</label>
+        <select id="filterPO"><option value="">All</option></select>
+      </div>
+      <div class="filter-cell">
+        <label>ETA from</label>
+        <input type="date" id="filterEtaFrom" />
+      </div>
+      <div class="filter-cell">
+        <label>ETA to</label>
+        <input type="date" id="filterEtaTo" />
+      </div>
+      <div class="filter-cell">
+        <label>Delay category</label>
+        <select id="filterDelayCat">
+          <option value="">All</option>
+          <option value="On Time">On Time</option>
+          <option value="Slight Delay">Slight (1-7 d)</option>
+          <option value="Moderate Delay">Moderate (8-30 d)</option>
+          <option value="High Delay">High (&gt;30 d)</option>
+        </select>
+      </div>
+      <div class="filter-cell toggles">
+        <label class="toggle"><input type="checkbox" id="filterOpen"/><span>Open only</span></label>
+        <label class="toggle"><input type="checkbox" id="filterCritical"/><span>Critical only</span></label>
+        <button class="btn ghost small" id="filterClear">Clear all</button>
+      </div>
+    </div>
+    <div class="filter-summary" id="filterSummary"></div>
+  </section>
+
+  <!-- =================== ACTION CONTROL =================== -->
+  <section class="section-wrap" id="actionSection" hidden>
+    <h3 class="section-title">Today's Action Control <small id="actionCount" class="title-badge"></small></h3>
+    <div class="action-bands" id="actionBands"></div>
+  </section>
+
+  <!-- =================== PERFORMANCE OVERVIEW (operational follow-up) =================== -->
+  <section class="section-wrap" id="chartsSection" hidden>
+    <h3 class="section-title">Performance Overview</h3>
+
+    <!-- Operational pulse: at-a-glance follow-up counts -->
+    <div class="pulse-grid" id="pulseGrid"></div>
+
+    <div class="charts-grid">
+      <div class="chart-card glass">
+        <div class="chart-title">Open Shipments by Vendor (Top 10)</div>
+        <div class="chart-body"><canvas id="chartOpenByVendor"></canvas></div>
+      </div>
+      <div class="chart-card glass">
+        <div class="chart-title">Delayed Shipments by Vendor (Top 10)</div>
+        <div class="chart-body"><canvas id="chartVendor"></canvas></div>
+      </div>
+      <div class="chart-card glass">
+        <div class="chart-title">Delay Buckets (Open Lines)</div>
+        <div class="chart-body"><canvas id="chartDelay"></canvas></div>
+      </div>
+      <div class="chart-card glass">
+        <div class="chart-title">Risk Status Snapshot</div>
+        <div class="chart-body"><canvas id="chartRisk"></canvas></div>
+      </div>
+      <div class="chart-card glass">
+        <div class="chart-title">Smart Status Distribution</div>
+        <div class="chart-body"><canvas id="chartStatus"></canvas></div>
+      </div>
+      <div class="chart-card glass">
+        <div class="chart-title">ETA Window - Next 12 Weeks (Open vs Delivered)</div>
+        <div class="chart-body"><canvas id="chartTimeline"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== VENDOR SCORECARD (card grid) =================== -->
+  <section class="section-wrap" id="vendorSection" hidden>
+    <h3 class="section-title">Vendor Scorecard</h3>
+
+    <div class="vendor-toolbar">
+      <div class="smart-search vendor-search-wrap">
+        <span class="smart-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        </span>
+        <input type="search" id="vendorSearch" placeholder="Search vendor..." autocomplete="off" />
+        <button type="button" class="btn ghost small smart-search-clear" id="vendorSearchClear" hidden>Clear</button>
+      </div>
+      <div class="vendor-meta">
+        <span class="muted" id="vendorCount">-</span>
+        <label class="vendor-sort-label">Sort by:
+          <select id="vendorSortKey">
+            <option value="score">Score</option>
+            <option value="onTimePct">On-Time %</option>
+            <option value="avgDelay">Avg Delay</option>
+            <option value="openShpt">Open Shipments</option>
+            <option value="critHigh">Critical+High</option>
+            <option value="totalShpt">Total Shipments</option>
+            <option value="name">Vendor name</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="vendor-grid" id="vendorGrid"></div>
+  </section>
+
+  <!-- Warnings (for missing columns etc.) -->
+  <section class="section-wrap" id="warningsSection" hidden>
+    <div class="warnings glass" id="warnings"></div>
+  </section>
+
+  <!-- =================== ROW DETAIL MODAL =================== -->
+  <div class="modal" id="rowModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <h3 id="modalTitle">Shipment detail</h3>
+        <button class="btn ghost icon" data-close aria-label="Close">X</button>
+      </header>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- =================== PASSWORD MODAL =================== -->
+  <div class="modal" id="pwModal" hidden>
+    <div class="modal-backdrop" data-pw-close></div>
+    <div class="modal-card glass small" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+      <header class="modal-header">
+        <h3 id="pwTitle">Admin password required</h3>
+        <button class="btn ghost icon" data-pw-close aria-label="Close">X</button>
+      </header>
+      <div class="modal-body">
+        <p class="pw-prompt" id="pwPrompt">Enter the admin password to update or clear the shipment data.</p>
+        <input type="password" id="pwInput" placeholder="Password" autocomplete="off" />
+        <div class="pw-error" id="pwError" hidden>Incorrect password.</div>
+        <div class="pw-actions">
+          <button class="btn primary" id="pwSubmit">Continue</button>
+          <button class="btn ghost" data-pw-close>Cancel</button>
+        </div>
+        <p class="pw-hint">Default password: <code>delta2026</code> (change <code>ADMIN_PASSWORD</code> at the top of <code>app.js</code>).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== FOOTER =================== -->
+  <footer class="app-footer">
+    <span>Delta Fitness | Shipment Control Tower | Operational web v3.1 | Persistent</span>
+    <span>Built with SheetJS + Chart.js + IndexedDB | Runs 100% client-side</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
