@@ -1651,6 +1651,9 @@
       setSystemMessage(`Data restored from browser storage - ${state.fileName} - saved ${when}`, 'restored');
     } else if (source === 'demo') {
       setSystemMessage(`Demo data loaded - ${fmtNum(state.rows.length)} synthetic lines`, 'success');
+    } else if (source === 'autofile') {
+      // [v3.3] Auto-loaded from the company file in the GitHub project
+      setSystemMessage(`Company data loaded from system file - ${state.fileName} - ${fmtNum(state.rows.length)} lines`, 'success');
     } else {
       setSystemMessage(`Data updated successfully - ${state.fileName} - ${fmtNum(state.rows.length)} lines`, 'success');
     }
@@ -1671,13 +1674,17 @@
     rebuildFilterOptions();
     refreshAll();
 
-    // Persist (only real uploads — restore is already saved; demo is ephemeral)
+    // Persist (only real admin uploads — restore is already saved; demo / autofile are ephemeral)
     if (source === 'upload') {
       persistDataset(source).catch(err => console.warn('persist failed', err));
     } else if (source === 'restore') {
-      setPill('storage', 'on', '— restored');
+      setPill('storage', 'on', '- restored');
     } else if (source === 'demo') {
-      setPill('storage', 'warn', '— demo (not saved)');
+      setPill('storage', 'warn', '- demo (not saved)');
+    } else if (source === 'autofile') {
+      // [v3.3] Auto-fetched from data/shipment-tracker.xlsx — NOT cached locally,
+      // so users always see the latest committed file on every refresh.
+      setPill('storage', 'warn', '- system file (not cached)');
     }
   }
 
@@ -2043,6 +2050,66 @@
     return rows;
   }
 
+  /* ============================================================
+     v3.3 — AUTO-FETCH from a project-relative Excel file
+     ============================================================
+     The tool is hosted on GitHub Pages. The company file lives at:
+         data/shipment-tracker.xlsx
+     On page load we fetch it via SheetJS, parse the FIRST sheet,
+     and run the existing engine. Admin upload (password-gated) still
+     overrides; that override is saved to IndexedDB and wins on every
+     subsequent refresh until the admin clicks "Clear Stored Data".
+
+     Order of precedence on page load:
+       1. IndexedDB restore (admin override sticks for this user)
+       2. Auto-fetch  data/shipment-tracker.xlsx
+       3. Empty state with "No company data found" message
+     ============================================================ */
+
+  const SYSTEM_FILE_PATH = 'data/shipment-tracker.xlsx';
+
+  /**
+   * Try to fetch the company shipment file from the project's data/ folder.
+   * Returns true on success (engine runs through ingestWorkbook).
+   */
+  async function tryLoadSystemFile() {
+    setSystemMessage('Loading company data from system file...', 'info');
+    setPill('engine', 'warn', '- fetching');
+    let resp;
+    try {
+      // cache: 'no-store' so users see the latest committed file on every reload
+      resp = await fetch(SYSTEM_FILE_PATH, { cache: 'no-store' });
+    } catch (err) {
+      console.warn('system file fetch failed', err);
+      setPill('engine', 'warn', '- offline');
+      return false;
+    }
+    if (!resp.ok) {
+      console.warn('system file response not ok', resp.status);
+      setPill('engine', 'warn', '- not found');
+      return false;
+    }
+    try {
+      const buf = await resp.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+      // Force the parser to use the FIRST sheet only (per spec)
+      if (wb.SheetNames && wb.SheetNames.length > 1) {
+        wb.SheetNames = [wb.SheetNames[0]];
+      }
+      // Filename shown in UI = the relative path's basename
+      state.fileName = SYSTEM_FILE_PATH.split('/').pop();
+      state.loadedAt = new Date();
+      state._source  = 'autofile';
+      ingestWorkbook(wb);
+      return true;
+    } catch (err) {
+      console.error('system file parse failed', err);
+      setSystemMessage('Failed to read company file: ' + err.message, 'error');
+      setPill('engine', 'warn', '- error');
+      return false;
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', async () => {
     bindUploadEvents();
     bindFilterEvents();
@@ -2064,15 +2131,31 @@
     // Hide hero search until data exists (it's only useful with data)
     const hero = getEl('heroSearch'); if (hero) hero.hidden = true;
 
-    // Attempt automatic restore from IndexedDB
+    // [v3.3] Boot order:
+    //   1. IndexedDB restore (admin override wins for this browser)
+    //   2. Auto-fetch the company file from data/shipment-tracker.xlsx
+    //   3. Empty state with "No company data found" message
+    let booted = false;
+
     try {
-      const restored = await tryRestoreFromStorage();
-      if (!restored) {
-        setSystemMessage('No saved dataset found in this browser - an admin must upload the latest shipment file.', 'info');
-      }
+      booted = await tryRestoreFromStorage();
     } catch (err) {
       console.warn('restore failed', err);
-      setSystemMessage('Could not access browser storage: ' + err.message, 'warn');
+    }
+
+    if (!booted) {
+      try {
+        booted = await tryLoadSystemFile();
+      } catch (err) {
+        console.warn('system file load failed', err);
+      }
+    }
+
+    if (!booted) {
+      setSystemMessage(
+        'No company data found. Admin must upload the Excel file.',
+        'warn'
+      );
     }
   });
 })();
